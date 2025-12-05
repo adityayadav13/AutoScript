@@ -3,23 +3,22 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+from dotenv import load_dotenv
 
-# ===========================================
-# CONFIG
-# ===========================================
+# ================================
+# LOAD ENVIRONMENT VARIABLES
+# ================================
+load_dotenv()  # Reads .env file locally
 
-GROQ_API_KEY = "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"   # <-- PUT YOUR KEY HERE
-
-# NEW WORKING MODEL (2025)
-MODEL_NAME = "llama-3.3-70b-versatile"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    raise ValueError("❌ Missing GROQ API key")
+    raise ValueError("❌ GROQ_API_KEY is missing! Add it to .env or Render variables.")
 
 
-# ===========================================
+# ================================
 # FASTAPI APP
-# ===========================================
+# ================================
 
 app = FastAPI()
 
@@ -32,14 +31,18 @@ app.add_middleware(
 )
 
 
+# Request format
 class CompletionRequest(BaseModel):
     prefix: str
     language: str | None = None
 
 
-# ===========================================
+# ================================
 # COMPLETION ENDPOINT
-# ===========================================
+# ================================
+
+MODEL_NAME = "llama-3.3-70b-versatile"   # CURRENT NON-DEPRECATED MODEL
+
 
 @app.post("/complete")
 def complete_code(req: CompletionRequest):
@@ -60,17 +63,20 @@ def complete_code(req: CompletionRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are AutoScript, a code completion engine.\n"
-                    "Continue exactly where the user's code ends.\n\n"
+                    "You are AutoScript — an inline AI code completion engine.\n"
+                    "Continue the user's code from the exact cursor position.\n\n"
                     "RULES:\n"
-                    "- DO NOT repeat existing code.\n"
-                    "- DO NOT rewrite functions or previous lines.\n"
-                    "- Only output the next logical continuation.\n"
-                    "- No comments, no explanations.\n"
-                    "- Only raw code tokens."
+                    "- NEVER repeat code already written.\n"
+                    "- NEVER rewrite function headers.\n"
+                    "- NEVER add comments or explanations.\n"
+                    "- ONLY output what comes *next*.\n"
+                    "- Maintain indentation and style.\n"
                 ),
             },
-            {"role": "user", "content": req.prefix},
+            {
+                "role": "user",
+                "content": req.prefix,
+            },
         ],
         "temperature": 0.1,
         "max_tokens": 120,
@@ -78,27 +84,28 @@ def complete_code(req: CompletionRequest):
 
     response = requests.post(url, headers=headers, json=payload)
 
+    # If Groq responds with an error (quota, model, etc.)
     if response.status_code != 200:
         print("❌ GROQ ERROR:", response.text)
         return {"completion": ""}
 
     data = response.json()
 
-    # Safe extraction
+    # Extract generated completion safely
     try:
         text = data["choices"][0]["message"]["content"]
     except Exception:
         text = ""
 
-    print("➡️ Returned completion:", repr(text))
+    print("➡️ AutoScript completion:", repr(text))
 
     return {"completion": text or ""}
 
 
+# ================================
+# ROOT ENDPOINT
+# ================================
+
 @app.get("/")
-def root():
-    return {"status": "AutoScript Backend OK"}
-if __name__ == "__main__":
-    import uvicorn
-    print("⚡ AutoScript GROQ Backend running at http://localhost:8000")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+def home():
+    return {"status": "AutoScript Backend Running ✔"}
